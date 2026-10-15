@@ -1,0 +1,82 @@
+{% extends "dashboard/base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-10">
+    <h1 class="mb-3">EMA crossover backtester</h1>
+    <p class="text-muted">Long-only, next-open execution. Indian symbols use yfinance adjusted OHLC data.</p>
+    <form method="post" id="backtest-form" class="card card-body shadow-sm mb-4">
+      {% csrf_token %}
+      {{ form.non_field_errors }}
+      <div class="row g-3">
+        {% for field in form %}
+          <div class="col-md-4">
+            <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+            {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+          </div>
+        {% endfor %}
+      </div>
+      <div class="mt-3"><button class="btn btn-primary" type="submit">Run backtest</button></div>
+      <div id="loading" class="text-muted small mt-2 d-none">Loading market data and calculating results…</div>
+    </form>
+
+    {% if has_results %}
+      <section class="mb-4">
+        <h2 class="h4">Data summary</h2>
+        <p>First candle: {{ data_summary.first_timestamp }} · Last candle: {{ data_summary.last_timestamp }} · Candle count: {{ data_summary.candle_count }}</p>
+        <p class="alert alert-warning">{{ source_warning }}</p>
+        {% if india_adjustment_note %}<p class="small">Indian OHLC data is requested with <code>auto_adjust=True</code>.</p>{% endif %}
+        {% if data_summary.unexpected_gaps %}<p class="alert alert-warning">Unexpected gaps detected: {{ data_summary.unexpected_gaps }}.</p>{% endif %}
+      </section>
+
+      <section class="mb-4">
+        <h2 class="h4">Performance metrics</h2>
+        <div class="row row-cols-2 row-cols-md-4 g-3">
+          <div class="col"><div class="card card-body"><small>Final equity</small>{{ metrics.final_equity }}</div></div>
+          <div class="col"><div class="card card-body"><small>Total return</small>{{ metrics.total_return }}</div></div>
+          <div class="col"><div class="card card-body"><small>CAGR</small>{{ metrics.cagr }}</div></div>
+          <div class="col"><div class="card card-body"><small>Max drawdown</small>{{ metrics.max_drawdown }}</div></div>
+          <div class="col"><div class="card card-body"><small>Win rate</small>{{ metrics.win_rate }}</div></div>
+          <div class="col"><div class="card card-body"><small>Profit factor</small>{{ metrics.profit_factor }}</div></div>
+          <div class="col"><div class="card card-body"><small>Closed trades</small>{{ metrics.closed_trades }}</div></div>
+          <div class="col"><div class="card card-body"><small>Buy &amp; hold return</small>{% if buy_and_hold_metrics %}{{ buy_and_hold_metrics.total_return }}{% else %}N/A{% endif %}</div></div>
+        </div>
+        <p class="mt-2 small">Buy-and-hold max drawdown: {% if buy_and_hold_metrics %}{{ buy_and_hold_metrics.max_drawdown }}{% else %}N/A — no strategy entry{% endif %}</p>
+      </section>
+
+      <section class="mb-4">{{ candlestick_chart|safe }}</section>
+      <section class="mb-4">{{ equity_chart|safe }}</section>
+
+      <section class="mb-4">
+        <h2 class="h4">Closed trades</h2>
+        <div class="table-responsive"><table class="table table-sm">
+          <thead><tr><th>Entry</th><th>Exit</th><th>Quantity</th><th>Entry fill</th><th>Exit fill</th><th>Net P&amp;L</th><th>Forced close</th></tr></thead>
+          <tbody>{% for trade in trade_rows %}<tr><td>{{ trade.entry_timestamp }}</td><td>{{ trade.exit_timestamp }}</td><td>{{ trade.quantity }}</td><td>{{ trade.entry_fill }}</td><td>{{ trade.exit_fill }}</td><td>{{ trade.pnl }}</td><td>{{ trade.forced_close|yesno:"Yes,No" }}</td></tr>{% empty %}<tr><td colspan="7">No closed trades.</td></tr>{% endfor %}</tbody>
+        </table></div>
+        <form method="post" action="{% url 'dashboard:export_trades' %}">
+          {% csrf_token %}
+          {{ form.symbol.as_hidden }}
+          {{ form.timeframe.as_hidden }}
+          {{ form.start_date.as_hidden }}
+          {{ form.end_date.as_hidden }}
+          {{ form.fast_period.as_hidden }}
+          {{ form.slow_period.as_hidden }}
+          {{ form.fee_percent.as_hidden }}
+          {{ form.slippage_percent.as_hidden }}
+          {{ form.start_capital.as_hidden }}
+          <button class="btn btn-outline-primary" type="submit">Download trades CSV</button>
+        </form>
+      </section>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById("backtest-form").addEventListener("submit", function () {
+  document.getElementById("loading").classList.remove("d-none");
+});
+</script>
+{% endblock %}
